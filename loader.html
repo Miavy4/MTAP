@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Загрузка приложения...</title>
+    <style>
+        /* Стили для loader.html */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* Предотвращаем появление скроллбаров от лоадера */
+            background-color: #1a1d21; /* Темный фон для лоадера */
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        #appLoaderContainer {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+            position: fixed; /* Чтобы был поверх всего, пока не загрузится основной сайт */
+            top: 0;
+            left: 0;
+            z-index: 9999; /* Выше других потенциальных элементов */
+            background-color: #1a1d21; /* Темный фон контейнера лоадера */
+            transition: opacity 0.5s ease-out; /* Для плавного исчезновения */
+        }
+
+        #loaderSpinner {
+            border: 5px solid #30343c; /* Цвет "пути" спиннера */
+            border-top: 5px solid #8ab4f8; /* Цвет активной части спиннера (светло-синий) */
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #loaderMessage {
+            color: #bdc1c6; /* Светло-серый текст */
+            font-size: 1.1em;
+        }
+
+        #appLoaderContainer.error #loaderSpinner {
+            border-top-color: #f28b82; /* Красный для спиннера при ошибке */
+        }
+        #appLoaderContainer.error #loaderMessage {
+            color: #f28b82; /* Красный текст ошибки */
+        }
+
+        /* Когда основной сайт загружен, контейнер лоадера скрывается */
+        #appLoaderContainer.hidden {
+            opacity: 0;
+            pointer-events: none; /* Чтобы не мешал кликам на основной сайт */
+        }
+    </style>
+</head>
+<body>
+    <!-- Контейнер для анимации загрузки и сообщений -->
+    <div id="appLoaderContainer">
+        <div id="loaderSpinner"></div>
+        <p id="loaderMessage">Загрузка приложения...</p>
+    </div>
+
+    <!-- Сюда будет вставлен основной сайт. 
+         Изначально он пуст или содержит только этот скрипт.
+         Но document.write() полностью заменит содержимое документа. -->
+
+    <script>
+        const loaderContainerEl = document.getElementById('appLoaderContainer');
+        const loaderMessageEl = document.getElementById('loaderMessage');
+
+        function showLoaderStatus(message, isError = false) {
+            if (loaderMessageEl) {
+                loaderMessageEl.textContent = message;
+            }
+            if (loaderContainerEl) {
+                if (isError) {
+                    loaderContainerEl.classList.add('error');
+                } else {
+                    loaderContainerEl.classList.remove('error');
+                }
+            }
+            console.log(isError ? "ERROR:" : "INFO:", message); // Логи для отладки
+        }
+
+        async function loadAndInjectRemoteApp() {
+            showLoaderStatus('Получение адреса основного сайта...', false);
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const remoteHtmlUrl = urlParams.get('loadUrl');
+
+            if (!remoteHtmlUrl) {
+                showLoaderStatus('Ошибка: Адрес основного сайта (параметр "loadUrl") не найден в URL.', true);
+                return;
+            }
+
+            showLoaderStatus(`Загрузка с ${remoteHtmlUrl.substring(0,60)}...`, false);
+
+            try {
+                const response = await fetch(remoteHtmlUrl, { mode: 'cors' });
+                
+                if (!response.ok) {
+                    throw new Error(`Сервер ответил с ошибкой: ${response.status} ${response.statusText}`);
+                }
+                const htmlText = await response.text();
+                
+                showLoaderStatus('Сайт загружен, подготовка к отображению...', false);
+
+                // Перед тем как писать новый документ, плавно скрываем лоадер
+                if (loaderContainerEl) {
+                    loaderContainerEl.classList.add('hidden');
+                    // Ждем завершения анимации исчезновения перед document.write
+                    setTimeout(() => {
+                        document.open();
+                        document.write(htmlText);
+                        document.close();
+                        // После document.write() старый DOM (включая loaderContainerEl) будет уничтожен.
+                        // Никаких дальнейших манипуляций с loaderContainerEl здесь делать не нужно.
+                        console.log("Основной сайт вставлен и должен отображаться.");
+                    }, 500); // 500ms - время анимации opacity
+                } else {
+                    // Если контейнер лоадера не найден (что маловероятно), пишем сразу
+                    document.open();
+                    document.write(htmlText);
+                    document.close();
+                }
+
+            } catch (error) {
+                console.error('Критическая ошибка загрузки основного сайта:', error);
+                showLoaderStatus(`Ошибка: ${error.message || 'Не удалось загрузить сайт.'}`, true);
+            }
+        }
+        
+        // Небольшая задержка перед стартом, чтобы пользователь успел увидеть начальное сообщение
+        setTimeout(loadAndInjectRemoteApp, 200);
+    </script>
+</body>
+</html>
